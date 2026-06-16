@@ -42,7 +42,11 @@ from .settings import (
     render_roms_settings,
     runtime_namelist,
 )
-from .util import compute_timestep_from_cfl, roms_tools_default_nesting_period_seconds
+from .util import (
+    compute_timestep_from_cfl,
+    compute_v_sponge_from_grid,
+    roms_tools_default_nesting_period_seconds,
+)
 import roms_tools as rt
 
 
@@ -2061,6 +2065,7 @@ class CstarSpecBuilder(BaseModel):
         - `SIMULATION_NAME_SETTINGS.title`: Set from `self.casename`
         - `SIMULATION_NAME_SETTINGS.output_root_name`: Set from `self.run_output_dir`
         - `TIME_STEPPING`: Calculated based on simulation dates and timestep
+        - `V_SPONGE_SETTINGS.v_sponge`: Set from grid spacing (``size_x / nx``) / 10
 
         Settings are deep-copied from the model spec to avoid modifying the
         original defaults. User overrides can be applied via `_update_settings_run_time()`
@@ -2094,7 +2099,22 @@ class CstarSpecBuilder(BaseModel):
             else:
                 extract["extract_period"] = period_default
 
+        self._apply_v_sponge_default_from_grid()
+
         self._merge_settings_override_files("run")
+
+    def _apply_v_sponge_default_from_grid(self) -> None:
+        """
+        Set ``V_SPONGE_SETTINGS.v_sponge`` from grid spacing.
+
+        Default: ``(size_x / nx)`` in meters, divided by 10. Values merged later
+        (override files or ``configure_build(run_time_settings=...)``) take
+        priority.
+        """
+        v_sponge = compute_v_sponge_from_grid(self.grid.size_x, self.grid.nx)
+        ensure_nml_section(self._settings_run_time, "V_SPONGE_SETTINGS")[
+            "v_sponge"
+        ] = v_sponge
 
     def _update_settings_compile_time(self, settings_compile_time: Dict[str, Any]) -> None:
         """
